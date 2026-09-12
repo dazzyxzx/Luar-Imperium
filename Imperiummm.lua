@@ -1,0 +1,2045 @@
+--[[
+    ╔══════════════════════════════════════════════════════════════╗
+    ║                     IMPERIUM v5.1                            ║
+    ║              UI IY Style — 80+ comandos                      ║
+    ║                                                              ║
+    ║  • Fly refeito (estilo IY, suave)                            ║
+    ║  • Chat privado sincronizado (;chatpv)                       ║
+    ║  • HeadSit (senta na cabeça e segue o player)                ║
+    ║  • Comandos "un" para desativar tudo                         ║
+    ║  • Bolinha canto superior esquerdo (estilo Delta)            ║
+    ║  • Painel canto inferior direito                             ║
+    ║  • Discord: https://discord.gg/BDCajDWXj8                    ║
+    ╚══════════════════════════════════════════════════════════════╝
+]]
+
+--=====================================================================
+-- 1. SERVIÇOS
+--=====================================================================
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local HttpService      = game:GetService("HttpService")
+local Lighting         = game:GetService("Lighting")
+local Workspace        = game:GetService("Workspace")
+local TeleportService  = game:GetService("TeleportService")
+local TextChatService  = game:GetService("TextChatService")
+local CoreGui          = game:GetService("CoreGui")
+local Stats            = game:GetService("Stats")
+local VirtualUser      = game:GetService("VirtualUser")
+local StarterGui       = game:GetService("StarterGui")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera      = Workspace.CurrentCamera
+local IsOnMobile  = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+if _G.ImperiumLoaded then return end
+_G.ImperiumLoaded = true
+
+--=====================================================================
+-- 2. CONFIG
+--=====================================================================
+local hasFS = (writefile and readfile and isfile and makefolder and isfolder)
+local CONFIG_FILE = "Imperium/config.json"
+
+local Config = {
+    Prefix      = ";",
+    DiscordLink = "https://discord.gg/BDCajDWXj8",
+    PanelX      = {1, -350},
+    PanelY      = {1, -310},
+    BallX       = {0, 12},
+    BallY       = {0, 12},
+    PanelOpen   = false,
+    ESP = {
+        Enabled=false, Items=false,
+        ShowHealth=true, ShowName=true, ShowDistance=false, ShowTracer=true,
+        MaxDistance=1000,
+        ColorPlayer={255,80,80}, ColorItem={80,255,130}, ColorTracer={80,180,255},
+    },
+}
+
+local function LoadConfig()
+    if not hasFS then return end
+    pcall(function()
+        if isfile(CONFIG_FILE) then
+            local d = HttpService:JSONDecode(readfile(CONFIG_FILE))
+            for k, v in pairs(d) do
+                if type(v) == "table" and type(Config[k]) == "table" then
+                    for k2, v2 in pairs(v) do Config[k][k2] = v2 end
+                else Config[k] = v end
+            end
+        end
+    end)
+end
+local function SaveConfig()
+    if not hasFS then return end
+    pcall(function()
+        if not isfolder("Imperium") then makefolder("Imperium") end
+        writefile(CONFIG_FILE, HttpService:JSONEncode(Config))
+    end)
+end
+LoadConfig()
+
+--=====================================================================
+-- 3. UTILS
+--=====================================================================
+local Utils = {}
+function Utils.GetChar()
+    local c = LocalPlayer.Character
+    if not c or not c.Parent then return nil end
+    local h = c:FindFirstChildOfClass("Humanoid")
+    if not h or h.Health <= 0 then return nil end
+    return c, h
+end
+function Utils.GetHRP()
+    local c = LocalPlayer.Character
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
+function Utils.FindPlayer(n)
+    if not n or n == "" then return nil end
+    n = n:lower()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Name:lower():sub(1,#n) == n or p.DisplayName:lower():sub(1,#n) == n then return p end
+    end
+    return nil
+end
+function Utils.RGB(t) return Color3.fromRGB(t[1],t[2],t[3]) end
+
+--=====================================================================
+-- 4. PALETA
+--=====================================================================
+local Palette = {
+    WindowBg   = Color3.fromRGB(30, 30, 30),
+    TopBarBg   = Color3.fromRGB(40, 40, 40),
+    CmdBarBg   = Color3.fromRGB(20, 20, 20),
+    ListItemBg = Color3.fromRGB(45, 45, 45),
+    Border     = Color3.fromRGB(55, 55, 55),
+    Text       = Color3.fromRGB(240, 240, 240),
+    SubText    = Color3.fromRGB(160, 160, 160),
+    Accent     = Color3.fromRGB(90, 130, 220),
+    BallBg     = Color3.fromRGB(35, 35, 35),
+    BallText   = Color3.fromRGB(240, 240, 240),
+    NotifBg    = Color3.fromRGB(38, 38, 38),
+}
+
+--=====================================================================
+-- 5. GUI ROOT
+--=====================================================================
+pcall(function()
+    local old = CoreGui:FindFirstChild("ImperiumGui")
+    if old then old:Destroy() end
+end)
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ImperiumGui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.DisplayOrder = 999999
+pcall(function() ScreenGui.Parent = CoreGui end)
+if not ScreenGui.Parent then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+local Root = Instance.new("Frame")
+Root.Size = UDim2.fromScale(1,1)
+Root.BackgroundTransparency = 1
+Root.Parent = ScreenGui
+
+--=====================================================================
+-- 6. BOLINHA
+--=====================================================================
+local Ball = Instance.new("TextButton")
+Ball.Name = "ImperiumBall"
+Ball.Size = UDim2.new(0, 40, 0, 40)
+Ball.Position = UDim2.new(Config.BallX[1], Config.BallX[2], Config.BallY[1], Config.BallY[2])
+Ball.BackgroundColor3 = Palette.BallBg
+Ball.BorderSizePixel = 0
+Ball.Text = "IM"
+Ball.TextColor3 = Palette.BallText
+Ball.Font = Enum.Font.SourceSansBold
+Ball.TextSize = 15
+Ball.AutoButtonColor = false
+Ball.ZIndex = 1000
+Ball.Parent = Root
+Instance.new("UICorner", Ball).CornerRadius = UDim.new(1, 0)
+local BallStroke = Instance.new("UIStroke", Ball)
+BallStroke.Color = Palette.Accent
+BallStroke.Thickness = 1.5
+BallStroke.Transparency = 0.4
+
+--=====================================================================
+-- 7. JANELA
+--=====================================================================
+local PANEL_W, PANEL_H = 340, 300
+
+local Panel = Instance.new("Frame")
+Panel.Name = "Panel"
+Panel.Size = UDim2.new(0, PANEL_W, 0, PANEL_H)
+Panel.Position = UDim2.new(Config.PanelX[1], Config.PanelX[2], Config.PanelY[1], Config.PanelY[2])
+Panel.BackgroundColor3 = Palette.WindowBg
+Panel.BorderSizePixel = 0
+Panel.Active = true
+Panel.Visible = true
+Panel.ZIndex = 500
+Panel.ClipsDescendants = true
+Panel.Parent = Root
+
+Instance.new("UICorner", Panel).CornerRadius = UDim.new(0, 6)
+local PanelStroke = Instance.new("UIStroke", Panel)
+PanelStroke.Color = Palette.Border
+PanelStroke.Thickness = 1
+PanelStroke.Transparency = 0.3
+
+--=====================================================================
+-- 8. TOP BAR
+--=====================================================================
+local TopBar = Instance.new("Frame")
+TopBar.Name = "TopBar"
+TopBar.Size = UDim2.new(1, 0, 0, 30)
+TopBar.Position = UDim2.new(0, 0, 0, 0)
+TopBar.BackgroundColor3 = Palette.TopBarBg
+TopBar.BorderSizePixel = 0
+TopBar.Parent = Panel
+Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 6)
+
+local TopBarFiller = Instance.new("Frame")
+TopBarFiller.Size = UDim2.new(1, 0, 0, 6)
+TopBarFiller.Position = UDim2.new(0, 0, 1, -6)
+TopBarFiller.BackgroundColor3 = Palette.TopBarBg
+TopBarFiller.BorderSizePixel = 0
+TopBarFiller.Parent = TopBar
+
+local TopBarTitle = Instance.new("TextLabel")
+TopBarTitle.Size = UDim2.new(1, -16, 1, 0)
+TopBarTitle.Position = UDim2.new(0, 12, 0, 0)
+TopBarTitle.BackgroundTransparency = 1
+TopBarTitle.Text = "Imperium"
+TopBarTitle.TextColor3 = Palette.Text
+TopBarTitle.Font = Enum.Font.SourceSansBold
+TopBarTitle.TextSize = 15
+TopBarTitle.TextXAlignment = Enum.TextXAlignment.Left
+TopBarTitle.Parent = TopBar
+
+--=====================================================================
+-- 9. LISTA
+--=====================================================================
+local ListFrame = Instance.new("ScrollingFrame")
+ListFrame.Name = "ListFrame"
+ListFrame.Size = UDim2.new(1, -12, 1, -80)
+ListFrame.Position = UDim2.new(0, 6, 0, 36)
+ListFrame.BackgroundTransparency = 1
+ListFrame.BorderSizePixel = 0
+ListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+ListFrame.ScrollBarThickness = 4
+ListFrame.ScrollBarImageColor3 = Palette.Accent
+ListFrame.ScrollBarImageTransparency = 0.4
+ListFrame.Parent = Panel
+
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Padding = UDim.new(0, 4)
+ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ListLayout.Parent = ListFrame
+
+local ListPad = Instance.new("UIPadding")
+ListPad.PaddingTop = UDim.new(0, 2)
+ListPad.PaddingBottom = UDim.new(0, 2)
+ListPad.Parent = ListFrame
+
+--=====================================================================
+-- 10. CMD BAR
+--=====================================================================
+local Cmdbar = Instance.new("TextBox")
+Cmdbar.Size = UDim2.new(1, -12, 0, 28)
+Cmdbar.Position = UDim2.new(0, 6, 1, -34)
+Cmdbar.BackgroundColor3 = Palette.CmdBarBg
+Cmdbar.BorderSizePixel = 0
+Cmdbar.Text = ""
+Cmdbar.PlaceholderText = "Comando..."
+Cmdbar.PlaceholderColor3 = Palette.SubText
+Cmdbar.TextColor3 = Palette.Text
+Cmdbar.Font = Enum.Font.SourceSans
+Cmdbar.TextSize = 14
+Cmdbar.TextXAlignment = Enum.TextXAlignment.Left
+Cmdbar.ClearTextOnFocus = false
+Cmdbar.Parent = Panel
+Instance.new("UICorner", Cmdbar).CornerRadius = UDim.new(0, 6)
+local CmdPad = Instance.new("UIPadding", Cmdbar)
+CmdPad.PaddingLeft = UDim.new(0, 10)
+CmdPad.PaddingRight = UDim.new(0, 10)
+
+--=====================================================================
+-- 11. TOOLTIP
+--=====================================================================
+local Tooltip = Instance.new("Frame")
+Tooltip.Size = UDim2.new(0, 200, 0, 52)
+Tooltip.BackgroundColor3 = Palette.NotifBg
+Tooltip.BorderSizePixel = 0
+Tooltip.Visible = false
+Tooltip.ZIndex = 2000
+Tooltip.Parent = Root
+Instance.new("UICorner", Tooltip).CornerRadius = UDim.new(0, 6)
+local TStroke = Instance.new("UIStroke", Tooltip)
+TStroke.Color = Palette.Border
+TStroke.Thickness = 1
+TStroke.Transparency = 0.2
+
+local TTitle = Instance.new("TextLabel")
+TTitle.Size = UDim2.new(1, -14, 0, 14)
+TTitle.Position = UDim2.new(0, 8, 0, 5)
+TTitle.BackgroundTransparency = 1
+TTitle.TextColor3 = Palette.Accent
+TTitle.Font = Enum.Font.SourceSansBold
+TTitle.TextSize = 11
+TTitle.TextXAlignment = Enum.TextXAlignment.Left
+TTitle.Parent = Tooltip
+
+local TDesc = Instance.new("TextLabel")
+TDesc.Size = UDim2.new(1, -14, 0, 28)
+TDesc.Position = UDim2.new(0, 8, 0, 20)
+TDesc.BackgroundTransparency = 1
+TDesc.TextColor3 = Palette.Text
+TDesc.Font = Enum.Font.SourceSans
+TDesc.TextSize = 11
+TDesc.TextWrapped = true
+TDesc.TextXAlignment = Enum.TextXAlignment.Left
+TDesc.TextYAlignment = Enum.TextYAlignment.Top
+TDesc.Parent = Tooltip
+
+local function ShowTooltip(cmd, btn)
+    TTitle.Text = cmd.name
+    TDesc.Text = cmd.desc
+    local abs, sz = btn.AbsolutePosition, btn.AbsoluteSize
+    local x = abs.X - 206
+    if x < 4 then x = abs.X + sz.X + 6 end
+    local y = math.clamp(abs.Y, 0, Root.AbsoluteSize.Y - 56)
+    Tooltip.Position = UDim2.new(0, x, 0, y)
+    Tooltip.Visible = true
+end
+local function HideTooltip() Tooltip.Visible = false end
+
+--=====================================================================
+-- 12. NOTIFICAÇÕES
+--=====================================================================
+local NotifStack = Instance.new("Frame")
+NotifStack.Size = UDim2.new(0, 220, 1, 0)
+NotifStack.Position = UDim2.new(1, -230, 0, 20)
+NotifStack.BackgroundTransparency = 1
+NotifStack.Parent = Root
+local NL = Instance.new("UIListLayout", NotifStack)
+NL.Padding = UDim.new(0, 5)
+NL.VerticalAlignment = Enum.VerticalAlignment.Top
+NL.SortOrder = Enum.SortOrder.LayoutOrder
+
+local function Notify(title, text, duration)
+    duration = duration or 4
+    local n = Instance.new("Frame")
+    n.Size = UDim2.new(1, 0, 0, 46)
+    n.BackgroundColor3 = Palette.NotifBg
+    n.BackgroundTransparency = 1
+    n.BorderSizePixel = 0
+    n.Parent = NotifStack
+    Instance.new("UICorner", n).CornerRadius = UDim.new(0, 6)
+    local s = Instance.new("UIStroke", n)
+    s.Color = Palette.Border
+    s.Transparency = 0.2
+
+    local t = Instance.new("TextLabel")
+    t.Size = UDim2.new(1, -12, 0, 14)
+    t.Position = UDim2.new(0, 8, 0, 4)
+    t.BackgroundTransparency = 1
+    t.Text = "IMPERIUM • " .. title
+    t.TextColor3 = Palette.Accent
+    t.Font = Enum.Font.SourceSansBold
+    t.TextSize = 10
+    t.TextXAlignment = Enum.TextXAlignment.Left
+    t.TextTransparency = 1
+    t.Parent = n
+
+    local d = Instance.new("TextLabel")
+    d.Size = UDim2.new(1, -12, 0, 22)
+    d.Position = UDim2.new(0, 8, 0, 18)
+    d.BackgroundTransparency = 1
+    d.Text = tostring(text)
+    d.TextColor3 = Palette.Text
+    d.Font = Enum.Font.SourceSans
+    d.TextSize = 11
+    d.TextWrapped = true
+    d.TextXAlignment = Enum.TextXAlignment.Left
+    d.TextYAlignment = Enum.TextYAlignment.Top
+    d.TextTransparency = 1
+    d.Parent = n
+
+    TweenService:Create(n, TweenInfo.new(0.2), {BackgroundTransparency=0}):Play()
+    TweenService:Create(t, TweenInfo.new(0.2), {TextTransparency=0}):Play()
+    TweenService:Create(d, TweenInfo.new(0.2), {TextTransparency=0}):Play()
+
+    task.delay(duration, function()
+        if not n.Parent then return end
+        TweenService:Create(n, TweenInfo.new(0.3), {BackgroundTransparency=1}):Play()
+        TweenService:Create(t, TweenInfo.new(0.3), {TextTransparency=1}):Play()
+        TweenService:Create(d, TweenInfo.new(0.3), {TextTransparency=1}):Play()
+        task.wait(0.35)
+        pcall(function() n:Destroy() end)
+    end)
+end
+
+--=====================================================================
+-- 13. CHAT PRIVADO LOCAL (;chatpv) — COM SYNC
+--=====================================================================
+local CHATPV_TAG = "\226\128\139[IMPV]\226\128\139"
+
+local ChatPV = {
+    open = false,
+    messages = {},
+    frame = nil,
+    scroll = nil,
+    input = nil,
+    layout = nil,
+}
+
+local function BuildChatPV()
+    local f = Instance.new("Frame")
+    f.Name = "ChatPV"
+    f.Size = UDim2.new(0, 340, 0, 240)
+    f.Position = UDim2.new(0.5, -170, 0.5, -120)
+    f.BackgroundColor3 = Palette.WindowBg
+    f.BackgroundTransparency = 0.05
+    f.BorderSizePixel = 0
+    f.Visible = false
+    f.ZIndex = 800
+    f.Active = true
+    f.Parent = Root
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 6)
+    local st = Instance.new("UIStroke", f)
+    st.Color = Palette.Accent
+    st.Thickness = 1
+    st.Transparency = 0.4
+
+    local top = Instance.new("Frame")
+    top.Size = UDim2.new(1, 0, 0, 26)
+    top.BackgroundColor3 = Palette.TopBarBg
+    top.BorderSizePixel = 0
+    top.Parent = f
+    Instance.new("UICorner", top).CornerRadius = UDim.new(0, 6)
+
+    local topFill = Instance.new("Frame")
+    topFill.Size = UDim2.new(1, 0, 0, 6)
+    topFill.Position = UDim2.new(0, 0, 1, -6)
+    topFill.BackgroundColor3 = Palette.TopBarBg
+    topFill.BorderSizePixel = 0
+    topFill.Parent = top
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -90, 1, 0)
+    title.Position = UDim2.new(0, 10, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "Chat Privado • Imperium"
+    title.TextColor3 = Palette.Accent
+    title.Font = Enum.Font.SourceSansBold
+    title.TextSize = 13
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = top
+
+    local clearBtn = Instance.new("TextButton")
+    clearBtn.Size = UDim2.new(0, 26, 0, 22)
+    clearBtn.Position = UDim2.new(1, -56, 0, 2)
+    clearBtn.BackgroundColor3 = Palette.CmdBarBg
+    clearBtn.BorderSizePixel = 0
+    clearBtn.Text = "🗑"
+    clearBtn.TextColor3 = Palette.Text
+    clearBtn.Font = Enum.Font.SourceSansBold
+    clearBtn.TextSize = 12
+    clearBtn.AutoButtonColor = false
+    clearBtn.Parent = top
+    Instance.new("UICorner", clearBtn).CornerRadius = UDim.new(0, 4)
+    clearBtn.MouseButton1Click:Connect(function()
+        for _, m in ipairs(ChatPV.scroll:GetChildren()) do
+            if m:IsA("Frame") then m:Destroy() end
+        end
+        ChatPV.messages = {}
+        ChatPV.scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    end)
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 22, 0, 22)
+    closeBtn.Position = UDim2.new(1, -28, 0, 2)
+    closeBtn.BackgroundColor3 = Palette.CmdBarBg
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = "×"
+    closeBtn.TextColor3 = Palette.Text
+    closeBtn.Font = Enum.Font.SourceSansBold
+    closeBtn.TextSize = 16
+    closeBtn.AutoButtonColor = false
+    closeBtn.Parent = top
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 4)
+    closeBtn.MouseButton1Click:Connect(function()
+        ChatPV.open = false
+        f.Visible = false
+    end)
+
+    local dragging, dragStart, startPos
+    top.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true dragStart = input.Position startPos = f.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if not dragging then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            local d = input.Position - dragStart
+            f.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
+                                    startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Size = UDim2.new(1, -12, 1, -70)
+    scroll.Position = UDim2.new(0, 6, 0, 32)
+    scroll.BackgroundTransparency = 1
+    scroll.BorderSizePixel = 0
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scroll.ScrollBarThickness = 4
+    scroll.ScrollBarImageColor3 = Palette.Accent
+    scroll.Parent = f
+
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 2)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = scroll
+
+    local input = Instance.new("TextBox")
+    input.Size = UDim2.new(1, -12, 0, 26)
+    input.Position = UDim2.new(0, 6, 1, -32)
+    input.BackgroundColor3 = Palette.CmdBarBg
+    input.BorderSizePixel = 0
+    input.Text = ""
+    input.PlaceholderText = "Mensagem privada..."
+    input.PlaceholderColor3 = Palette.SubText
+    input.TextColor3 = Palette.Text
+    input.Font = Enum.Font.SourceSans
+    input.TextSize = 13
+    input.TextXAlignment = Enum.TextXAlignment.Left
+    input.ClearTextOnFocus = false
+    input.Parent = f
+    Instance.new("UICorner", input).CornerRadius = UDim.new(0, 5)
+    local ip = Instance.new("UIPadding", input)
+    ip.PaddingLeft = UDim.new(0, 8)
+    ip.PaddingRight = UDim.new(0, 8)
+
+    ChatPV.frame = f
+    ChatPV.scroll = scroll
+    ChatPV.input = input
+    ChatPV.layout = layout
+end
+
+BuildChatPV()
+
+local function AddChatPVMessage(author, text, isRemote)
+    if not ChatPV.scroll then return end
+    local msg = Instance.new("Frame")
+    msg.Size = UDim2.new(1, -6, 0, 22)
+    msg.BackgroundTransparency = 1
+    msg.LayoutOrder = #ChatPV.messages + 1
+    msg.Parent = ChatPV.scroll
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = "[" .. os.date("%H:%M") .. "] " .. author .. ": " .. text
+    lbl.TextColor3 = isRemote and Color3.fromRGB(255, 200, 120) or Palette.Text
+    lbl.Font = Enum.Font.SourceSans
+    lbl.TextSize = 13
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextWrapped = true
+    lbl.Parent = msg
+
+    table.insert(ChatPV.messages, {author = author, text = text, remote = isRemote})
+    if #ChatPV.messages > 200 then table.remove(ChatPV.messages, 1) end
+
+    if ChatPV.layout then
+        ChatPV.scroll.CanvasSize = UDim2.new(0, 0, 0, ChatPV.layout.AbsoluteContentSize.Y + 8)
+    end
+    task.defer(function()
+        ChatPV.scroll.CanvasPosition = Vector2.new(0, ChatPV.scroll.CanvasSize.Y.Offset)
+    end)
+end
+
+local function SendChatPVMessage(text)
+    AddChatPVMessage(LocalPlayer.DisplayName, text, false)
+    local full = CHATPV_TAG .. " " .. text
+    local ok = pcall(function()
+        if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+            local tc = TextChatService:FindFirstChild("TextChannels")
+            local general = tc and tc:FindFirstChild("RBXGeneral")
+            if general then
+                general:SendAsync(full)
+                return
+            end
+        end
+        StarterGui:SetCore("ChatSendMessage", full)
+    end)
+    if not ok then
+        pcall(function() StarterGui:SetCore("ChatSendMessage", full) end)
+    end
+end
+
+ChatPV.input.FocusLost:Connect(function(enter)
+    if not enter then return end
+    local text = ChatPV.input.Text
+    ChatPV.input.Text = ""
+    if text == "" then return end
+    SendChatPVMessage(text)
+end)
+
+local function HandleChatPVReceive(text, sender)
+    if not text or #text < #CHATPV_TAG then return false end
+    if text:sub(1, #CHATPV_TAG) ~= CHATPV_TAG then return false end
+    local content = text:sub(#CHATPV_TAG + 1)
+    content = content:gsub("^%s+", "")
+    if content == "" then return true end
+    if sender and sender ~= LocalPlayer then
+        AddChatPVMessage(sender.DisplayName or sender.Name, content, true)
+    end
+    return true
+end
+
+--=====================================================================
+-- 14. REGISTRO DE COMANDOS
+--=====================================================================
+local Registry, Aliases, CmdList = {}, {}, {}
+
+local function Register(name, aliases, desc, fn)
+    local cmd = {name=name, aliases=aliases or {}, desc=desc or "", fn=fn}
+    Registry[name:lower()] = cmd
+    table.insert(CmdList, cmd)
+    for _, a in ipairs(cmd.aliases) do Aliases[a:lower()] = name:lower() end
+end
+
+local function Execute(name, args)
+    local key = name:lower()
+    local cmd = Registry[key]
+    if not cmd then
+        local real = Aliases[key]
+        if real then cmd = Registry[real] end
+    end
+    if not cmd then Notify("Erro", "Comando não encontrado: " .. name, 3) return end
+    local ok, err = pcall(cmd.fn, args or {})
+    if not ok then Notify("Erro", tostring(err), 4) end
+end
+
+--=====================================================================
+-- 15. FLY (estilo IY)
+--=====================================================================
+local fly = {
+    active = false, conn = nil,
+    bv = nil, bg = nil,
+    velocity = Vector3.zero,
+    speed = 100, turbo = 250,
+    vflyMode = false,
+}
+
+local function StartFly()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
+
+    fly.active = true
+    hum.PlatformStand = true
+
+    for _, v in ipairs(hrp:GetChildren()) do
+        if v:IsA("BodyVelocity") or v:IsA("BodyGyro") then v:Destroy() end
+    end
+
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+    bv.P = 1250
+    bv.Velocity = Vector3.zero
+    bv.Parent = hrp
+
+    local bg = Instance.new("BodyGyro")
+    bg.P = 9e4
+    bg.D = 500
+    bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+    bg.CFrame = CFrame.new(hrp.Position) * Camera.CFrame.Rotation
+    bg.Parent = hrp
+
+    fly.bv = bv
+    fly.bg = bg
+    fly.velocity = Vector3.zero
+
+    fly.conn = RunService.RenderStepped:Connect(function(dt)
+        if not fly.active then return end
+        local c = LocalPlayer.Character
+        if not c then return end
+        local h = c:FindFirstChild("HumanoidRootPart")
+        local hu = c:FindFirstChildOfClass("Humanoid")
+        if not h or not hu then return end
+
+        local cam = Workspace.CurrentCamera
+        local camLook  = cam.CFrame.LookVector
+        local camRight = cam.CFrame.RightVector
+        local up       = Vector3.new(0, 1, 0)
+
+        local dir = Vector3.zero
+
+        if fly.vflyMode then
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = up end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = -up end
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += camLook end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= camLook end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += camRight end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= camRight end
+        else
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += camLook end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= camLook end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += camRight end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= camRight end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += up end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir -= up end
+        end
+
+        local hMove = hu.MoveDirection
+        if dir.Magnitude < 0.1 and hMove.Magnitude > 0.1 then
+            dir = camLook * -hMove.Z + camRight * hMove.X
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += up end
+        end
+
+        local spd = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+            and fly.turbo or fly.speed
+
+        local targetVel = dir.Magnitude > 0.01 and (dir.Unit * spd) or Vector3.zero
+        local alpha = math.clamp(8 * dt, 0, 1)
+        fly.velocity = fly.velocity:Lerp(targetVel, alpha)
+        bv.Velocity = fly.velocity
+
+        local desiredCF = CFrame.new(h.Position) * cam.CFrame.Rotation
+        bg.CFrame = bg.CFrame:Lerp(desiredCF, math.clamp(15 * dt, 0, 1))
+    end)
+end
+
+local function StopFly()
+    fly.active = false
+    if fly.conn then fly.conn:Disconnect() fly.conn = nil end
+    if fly.bv then fly.bv:Destroy() fly.bv = nil end
+    if fly.bg then fly.bg:Destroy() fly.bg = nil end
+    local c = LocalPlayer.Character
+    local h = c and c:FindFirstChildOfClass("Humanoid")
+    if h then h.PlatformStand = false end
+end
+
+--=====================================================================
+-- 16. ESP
+--=====================================================================
+local ESP = {drawings={}, items={}, connP=nil, connI=nil}
+
+local function espPlayer(plr)
+    local box = Drawing.new("Square") box.Thickness=1 box.Filled=false box.Visible=false
+    local nm = Drawing.new("Text") nm.Size=14 nm.Center=true nm.Outline=true nm.Visible=false
+    local hp = Drawing.new("Text") hp.Size=12 hp.Center=true hp.Outline=true hp.Visible=false
+    local tr = Drawing.new("Line") tr.Thickness=1 tr.Visible=false
+    ESP.drawings[plr] = {box=box, name=nm, health=hp, tracer=tr}
+end
+local function espPlayerRm(plr)
+    local d = ESP.drawings[plr]
+    if d then for _, o in pairs(d) do pcall(function() o:Remove() end) end ESP.drawings[plr]=nil end
+end
+local function espColors()
+    local cb, ct = Utils.RGB(Config.ESP.ColorPlayer), Utils.RGB(Config.ESP.ColorTracer)
+    for _, d in pairs(ESP.drawings) do d.box.Color=cb d.tracer.Color=ct end
+end
+local function espStartPlayers()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then espPlayer(p) end
+    end
+    espColors()
+    ESP.connP = RunService.RenderStepped:Connect(function()
+        local camPos = Camera.CFrame.Position
+        for plr, d in pairs(ESP.drawings) do
+            local c = plr.Character
+            local hrp = c and c:FindFirstChild("HumanoidRootPart")
+            local hum = c and c:FindFirstChildOfClass("Humanoid")
+            if hrp and hum and hum.Health > 0 then
+                local dist = (hrp.Position - camPos).Magnitude
+                if dist <= Config.ESP.MaxDistance then
+                    local pos, on = Camera:WorldToViewportPoint(hrp.Position)
+                    if on then
+                        local h = math.clamp(1400/dist, 20, 500)
+                        local w = h * 0.55
+                        d.box.Size = Vector2.new(w,h)
+                        d.box.Position = Vector2.new(pos.X-w/2, pos.Y-h/2)
+                        d.box.Visible = true
+                        if Config.ESP.ShowName then
+                            d.name.Position = Vector2.new(pos.X, pos.Y-h/2-14)
+                            d.name.Text = plr.Name .. (Config.ESP.ShowDistance and (" ["..math.floor(dist).."m]") or "")
+                            d.name.Visible = true
+                        else d.name.Visible = false end
+                        if Config.ESP.ShowHealth then
+                            d.health.Position = Vector2.new(pos.X, pos.Y+h/2+2)
+                            d.health.Text = math.floor(hum.Health).."/"..math.floor(hum.MaxHealth)
+                            d.health.Visible = true
+                        else d.health.Visible = false end
+                        if Config.ESP.ShowTracer then
+                            d.tracer.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
+                            d.tracer.To = Vector2.new(pos.X, pos.Y+h/2)
+                            d.tracer.Visible = true
+                        else d.tracer.Visible = false end
+                    else
+                        d.box.Visible=false d.name.Visible=false d.health.Visible=false d.tracer.Visible=false
+                    end
+                else
+                    d.box.Visible=false d.name.Visible=false d.health.Visible=false d.tracer.Visible=false
+                end
+            else
+                d.box.Visible=false d.name.Visible=false d.health.Visible=false d.tracer.Visible=false
+            end
+        end
+    end)
+    Players.PlayerAdded:Connect(function(p)
+        if Config.ESP.Enabled and Config.ESP.Players and p ~= LocalPlayer then
+            espPlayer(p) espColors()
+        end
+    end)
+    Players.PlayerRemoving:Connect(espPlayerRm)
+end
+local function espStopPlayers()
+    if ESP.connP then ESP.connP:Disconnect() ESP.connP=nil end
+    for p in pairs(ESP.drawings) do espPlayerRm(p) end
+end
+local function espItem(part)
+    local box = Drawing.new("Square") box.Thickness=1 box.Filled=false box.Visible=false box.Color=Utils.RGB(Config.ESP.ColorItem)
+    local nm = Drawing.new("Text") nm.Size=12 nm.Center=true nm.Outline=true nm.Visible=false nm.Color=Utils.RGB(Config.ESP.ColorItem)
+    ESP.items[part] = {box=box, name=nm}
+end
+local function espItemRm(part)
+    local d = ESP.items[part]
+    if d then for _, o in pairs(d) do pcall(function() o:Remove() end) end ESP.items[part]=nil end
+end
+local function espStartItems()
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("Tool") then
+            local h = obj:FindFirstChild("Handle")
+            if h then espItem(h) end
+        elseif obj:IsA("BasePart") and obj.Parent and obj.Parent:IsA("Model") then
+            local n = obj.Name:lower()
+            if n:find("tool") or n:find("item") or n:find("drop") then espItem(obj) end
+        end
+    end
+    ESP.connI = RunService.RenderStepped:Connect(function()
+        local camPos = Camera.CFrame.Position
+        for part, d in pairs(ESP.items) do
+            if not part.Parent then espItemRm(part) continue end
+            local dist = (part.Position - camPos).Magnitude
+            if dist <= Config.ESP.MaxDistance then
+                local pos, on = Camera:WorldToViewportPoint(part.Position)
+                if on then
+                    local h = math.clamp(1200/dist, 15, 300)
+                    local w = h * 0.55
+                    d.box.Size = Vector2.new(w,h)
+                    d.box.Position = Vector2.new(pos.X-w/2, pos.Y-h/2)
+                    d.box.Visible = true
+                    d.name.Position = Vector2.new(pos.X, pos.Y-h/2-12)
+                    d.name.Text = part.Name.." ["..math.floor(dist).."m]"
+                    d.name.Visible = true
+                else d.box.Visible=false d.name.Visible=false end
+            else d.box.Visible=false d.name.Visible=false end
+        end
+    end)
+end
+local function espStopItems()
+    if ESP.connI then ESP.connI:Disconnect() ESP.connI=nil end
+    for p in pairs(ESP.items) do espItemRm(p) end
+end
+local function espRefresh()
+    if Config.ESP.Enabled and Config.ESP.Players then
+        if not ESP.connP then espStartPlayers() end
+    else espStopPlayers() end
+    if Config.ESP.Enabled and Config.ESP.Items then
+        if not ESP.connI then espStartItems() end
+    else espStopItems() end
+    SaveConfig()
+end
+
+--=====================================================================
+-- 17. HEADSIT (senta na cabeça e segue o player)
+--=====================================================================
+local HeadSit = {
+    active = false,
+    target = nil,
+    conn = nil,
+    weld = nil,
+    offset = Vector3.new(0, 0, 0),
+}
+
+local function StartHeadSit(player)
+    if HeadSit.active then
+        Notify("HeadSit", "Já ativo. Use ;unheadsit", 2)
+        return
+    end
+    if not player or not player.Character then
+        Notify("HeadSit", "Player inválido", 2)
+        return
+    end
+
+    local myChar = LocalPlayer.Character
+    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+    if not myHRP or not myHum then return end
+
+    local targetHead = player.Character:FindFirstChild("Head")
+    if not targetHead then
+        Notify("HeadSit", "Alvo sem cabeça (bug raro)", 2)
+        return
+    end
+
+    HeadSit.active = true
+    HeadSit.target = player
+
+    -- Desativa física do meu personagem
+    myHum.PlatformStand = true
+    myHum.Sit = false
+    pcall(function() myHum:ChangeState(Enum.HumanoidStateType.Physics) end)
+    pcall(function() myHum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false) end)
+
+    -- Congela posição inicial
+    myHRP.Anchored = true
+
+    -- Cria weld para seguir a cabeça
+    HeadSit.conn = RunService.Heartbeat:Connect(function()
+        if not HeadSit.active then return end
+        local t = HeadSit.target
+        if not t or not t.Character then
+            StopHeadSit()
+            Notify("HeadSit", "Alvo saiu/desconectou", 3)
+            return
+        end
+        local head = t.Character:FindFirstChild("Head")
+        local myHRP2 = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if head and myHRP2 then
+            -- Posiciona meu HRP acima da cabeça do alvo
+            myHRP2.CFrame = head.CFrame * CFrame.new(0, head.Size.Y/2 + 2.5, 0)
+        end
+    end)
+
+    Notify("HeadSit", "Sentando em "..player.Name, 3)
+end
+
+function StopHeadSit()
+    if not HeadSit.active then return end
+    HeadSit.active = false
+    HeadSit.target = nil
+    if HeadSit.conn then HeadSit.conn:Disconnect() HeadSit.conn = nil end
+
+    local myChar = LocalPlayer.Character
+    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+    if myHRP then myHRP.Anchored = false end
+    if myHum then
+        pcall(function() myHum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true) end)
+        myHum.PlatformStand = false
+    end
+    Notify("HeadSit", "DESATIVADO", 2)
+end
+
+--=====================================================================
+-- 18. WAYPOINTS + LOGS
+--=====================================================================
+local WPs = {}
+if hasFS then pcall(function()
+    if isfile("Imperium/waypoints.json") then
+        WPs = HttpService:JSONDecode(readfile("Imperium/waypoints.json"))
+    end
+end) end
+local function SaveWPs()
+    if not hasFS then return end
+    pcall(function()
+        if not isfolder("Imperium") then makefolder("Imperium") end
+        writefile("Imperium/waypoints.json", HttpService:JSONEncode(WPs))
+    end)
+end
+
+local Logs = {chat={}, join={}}
+local function PushLog(t, e)
+    table.insert(t, e)
+    if #t > 200 then table.remove(t, 1) end
+end
+pcall(function()
+    if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+        TextChatService.MessageReceived:Connect(function(msg)
+            if msg.TextSource then
+                local s = Players:GetPlayerByUserId(msg.TextSource.UserId)
+                if s then PushLog(Logs.chat, ("[%s] %s: %s"):format(os.date("%H:%M:%S"), s.Name, msg.Text)) end
+            end
+        end)
+    else
+        for _, p in ipairs(Players:GetPlayers()) do
+            p.Chatted:Connect(function(m) PushLog(Logs.chat, ("[%s] %s: %s"):format(os.date("%H:%M:%S"), p.Name, m)) end)
+        end
+        Players.PlayerAdded:Connect(function(p)
+            p.Chatted:Connect(function(m) PushLog(Logs.chat, ("[%s] %s: %s"):format(os.date("%H:%M:%S"), p.Name, m)) end)
+        end)
+    end
+end)
+Players.PlayerAdded:Connect(function(p) PushLog(Logs.join, ("[%s] + %s"):format(os.date("%H:%M:%S"), p.Name)) end)
+Players.PlayerRemoving:Connect(function(p) PushLog(Logs.join, ("[%s] - %s"):format(os.date("%H:%M:%S"), p.Name)) end)
+
+-- Hook do chat para capturar mensagens do ChatPV
+pcall(function()
+    if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+        TextChatService.MessageReceived:Connect(function(msg)
+            if not msg.TextSource then return end
+            local sender = Players:GetPlayerByUserId(msg.TextSource.UserId)
+            if HandleChatPVReceive(msg.Text, sender) then return end
+        end)
+    else
+        local function hookPlayer(p)
+            p.Chatted:Connect(function(m)
+                if HandleChatPVReceive(m, p) then return end
+            end)
+        end
+        for _, p in ipairs(Players:GetPlayers()) do hookPlayer(p) end
+        Players.PlayerAdded:Connect(hookPlayer)
+    end
+end)
+
+--=====================================================================
+-- 19. ESTADOS GLOBAIS
+--=====================================================================
+local State = {
+    noclip = false,
+    infinitejump = false,
+    fullbright = false,
+    freecam = false,
+    invisible = false,
+    loopheal = false,
+    loopjump = false,
+    antiafk = false,
+    autosprint = false,
+    spinLoop = false,
+    frozenAll = false,
+    viewPlayer = nil,
+    originalSubject = nil,
+    nakedOriginal = {},
+    fakeNameOriginal = nil,
+    antiAfkConn = nil,
+    loopHealConn = nil,
+    loopJumpConn = nil,
+    autoSprintConn = nil,
+    spinLoopConn = nil,
+    noclipConn = nil,
+    ijConn = nil,
+    freecamConn = nil,
+    freecamSaved = nil,
+    viewConn = nil,
+}
+
+--=====================================================================
+-- 20. COMANDOS — MOVIMENTO
+--=====================================================================
+Register("fly", {"f"}, "Ativa o fly (WASD + Space/Ctrl, Shift=turbo).", function()
+    if fly.active then Notify("Fly", "Já ativo. Use ;unfly", 2) return end
+    fly.vflyMode = false
+    StartFly()
+    Notify("Fly", "ATIVADO — WASD | Space/Ctrl | Shift turbo", 3)
+end)
+Register("unfly", {}, "Desativa o fly.", function()
+    if not fly.active then Notify("Fly", "Não está ativo", 2) return end
+    StopFly()
+    Notify("Fly", "DESATIVADO", 2)
+end)
+Register("vfly", {"verticalfly"}, "Fly vertical (Space sobe, Ctrl desce).", function()
+    if fly.active then fly.vflyMode = true Notify("VFly", "Modo vertical ON", 2) return end
+    fly.vflyMode = true
+    StartFly()
+    Notify("VFly", "ATIVADO — Space/Ctrl + WASD", 3)
+end)
+Register("unvfly", {}, "Desativa VFly.", function()
+    if not fly.active or not fly.vflyMode then Notify("VFly", "Não está ativo", 2) return end
+    fly.vflyMode = false
+    Notify("VFly", "Modo normal (continua fly)", 2)
+end)
+Register("flyspeed", {"fs"}, "Velocidade do fly.", function(a)
+    local v = tonumber(a[1]) if v then fly.speed = v Notify("Fly", "Speed = "..v, 2) end
+end)
+Register("flyturbo", {"ft"}, "Velocidade turbo do fly.", function(a)
+    local v = tonumber(a[1]) if v then fly.turbo = v Notify("Fly", "Turbo = "..v, 2) end
+end)
+Register("walkspeed", {"ws","speed"}, "Define WalkSpeed.", function(a)
+    local _, h = Utils.GetChar() if not h then return end
+    local v = tonumber(a[1]) or 16 h.WalkSpeed = v Notify("WS", tostring(v), 2)
+end)
+Register("jumppower", {"jp","jump"}, "Define JumpPower.", function(a)
+    local _, h = Utils.GetChar() if not h then return end
+    local v = tonumber(a[1]) or 50 h.UseJumpPower=true h.JumpPower=v Notify("JP", tostring(v), 2)
+end)
+Register("noclip", {"nc"}, "Atravessa paredes.", function()
+    if State.noclip then Notify("Noclip", "Já ativo. Use ;unnoclip", 2) return end
+    State.noclip = true
+    State.noclipConn = RunService.Stepped:Connect(function()
+        local c = LocalPlayer.Character
+        if not c then return end
+        for _, p in ipairs(c:GetDescendants()) do
+            if p:IsA("BasePart") and p.CanCollide then p.CanCollide = false end
+        end
+    end)
+    Notify("Noclip", "ATIVADO", 2)
+end)
+Register("unnoclip", {"unc"}, "Desativa noclip.", function()
+    if not State.noclip then Notify("Noclip", "Não está ativo", 2) return end
+    State.noclip = false
+    if State.noclipConn then State.noclipConn:Disconnect() State.noclipConn = nil end
+    local c = LocalPlayer.Character
+    if c then
+        for _, p in ipairs(c:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = true end
+        end
+    end
+    Notify("Noclip", "DESATIVADO", 2)
+end)
+Register("infinitejump", {"ij"}, "Pulo infinito.", function()
+    if State.infinitejump then Notify("IJ", "Já ativo. Use ;unij", 2) return end
+    State.infinitejump = true
+    State.ijConn = UserInputService.JumpRequest:Connect(function()
+        local _, h = Utils.GetChar()
+        if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end)
+    Notify("IJ", "ATIVADO", 2)
+end)
+Register("uninfinitejump", {"unij"}, "Desativa pulo infinito.", function()
+    if not State.infinitejump then Notify("IJ", "Não está ativo", 2) return end
+    State.infinitejump = false
+    if State.ijConn then State.ijConn:Disconnect() State.ijConn = nil end
+    Notify("IJ", "DESATIVADO", 2)
+end)
+Register("btools", {"bt"}, "Dá ferramentas de construção.", function()
+    local bp = LocalPlayer:FindFirstChildOfClass("Backpack") if not bp then return end
+    for _, n in ipairs({"Hammer","Clone","Grab","Rocket"}) do
+        local t = Instance.new("Tool")
+        t.Name=n t.CanBeDropped=false t.RequiresHandle=false t.Parent=bp
+    end
+    Notify("BTools", "Dadas", 2)
+end)
+Register("loopjump", {"lj"}, "Pula automaticamente.", function()
+    if State.loopjump then Notify("LoopJump", "Já ativo. Use ;unloopjump", 2) return end
+    State.loopjump = true
+    State.loopJumpConn = RunService.Heartbeat:Connect(function()
+        local _, h = Utils.GetChar()
+        if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end)
+    Notify("LoopJump", "ATIVADO", 2)
+end)
+Register("unloopjump", {"unlj"}, "Desativa pulo automático.", function()
+    if not State.loopjump then Notify("LoopJump", "Não está ativo", 2) return end
+    State.loopjump = false
+    if State.loopJumpConn then State.loopJumpConn:Disconnect() State.loopJumpConn = nil end
+    Notify("LoopJump", "DESATIVADO", 2)
+end)
+Register("autosprint", {"as"}, "Corre automaticamente.", function()
+    if State.autosprint then Notify("AutoSprint", "Já ativo. Use ;unas", 2) return end
+    State.autosprint = true
+    local _, h = Utils.GetChar()
+    if h then h.WalkSpeed = 32 end
+    State.autoSprintConn = LocalPlayer.CharacterAdded:Connect(function(c)
+        task.wait(0.5)
+        local hu = c:FindFirstChildOfClass("Humanoid")
+        if hu and State.autosprint then hu.WalkSpeed = 32 end
+    end)
+    Notify("AutoSprint", "ATIVADO", 2)
+end)
+Register("unautosprint", {"unas"}, "Desativa auto-sprint.", function()
+    if not State.autosprint then Notify("AutoSprint", "Não está ativo", 2) return end
+    State.autosprint = false
+    if State.autoSprintConn then State.autoSprintConn:Disconnect() State.autoSprintConn = nil end
+    local _, h = Utils.GetChar()
+    if h then h.WalkSpeed = 16 end
+    Notify("AutoSprint", "DESATIVADO", 2)
+end)
+Register("swim", {}, "Ativa modo nado.", function()
+    local _, h = Utils.GetChar()
+    if h then
+        h:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
+        h:ChangeState(Enum.HumanoidStateType.Swimming)
+    end
+    Notify("Swim", "Ativado", 2)
+end)
+Register("flip", {}, "Faz o personagem dar um flip.", function()
+    local _, h = Utils.GetChar()
+    if not h then return end
+    local anim = Instance.new("Animation")
+    anim.AnimationId = "rbxassetid://97541841216356"
+    local ok, t = pcall(function() return h.Animator:LoadAnimation(anim) end)
+    if ok and t then t:Play() end
+end)
+
+--=====================================================================
+-- 21. COMANDOS — HEADSIT
+--=====================================================================
+Register("headsit", {"hs"}, "Senta na cabeça de um player e segue ele.", function(a)
+    local p = Utils.FindPlayer(a[1])
+    if not p then Notify("HeadSit", "Uso: headsit <player>", 3) return end
+    StartHeadSit(p)
+end)
+
+Register("unheadsit", {}, "Para de sentar na cabeça.", function()
+    if not HeadSit.active then Notify("HeadSit", "Não está ativo", 2) return end
+    StopHeadSit()
+end)
+
+--=====================================================================
+-- 22. COMANDOS — VISUAL
+--=====================================================================
+Register("fullbright", {"fb"}, "Iluminação total.", function()
+    if State.fullbright then Notify("FB", "Já ativo. Use ;unfb", 2) return end
+    State.fullbright = true
+    Lighting.Brightness=3 Lighting.ClockTime=14
+    Lighting.Ambient=Color3.fromRGB(180,180,180)
+    Lighting.OutdoorAmbient=Color3.fromRGB(180,180,180)
+    Lighting.FogEnd=1e6 Lighting.GlobalShadows=false
+    Notify("FB","ATIVADO",2)
+end)
+Register("unfullbright", {"unfb"}, "Desativa fullbright.", function()
+    if not State.fullbright then Notify("FB", "Não está ativo", 2) return end
+    State.fullbright = false
+    Lighting.Brightness=2 Lighting.ClockTime=14
+    Lighting.Ambient=Color3.fromRGB(70,70,70)
+    Lighting.OutdoorAmbient=Color3.fromRGB(128,128,128)
+    Lighting.FogEnd=100000 Lighting.GlobalShadows=true
+    Notify("FB","DESATIVADO",2)
+end)
+Register("fov", {}, "Define FOV (40-140).", function(a)
+    local v = tonumber(a[1]) or 70 Camera.FieldOfView = v Notify("FOV", v, 2)
+end)
+Register("time", {"hora"}, "Hora do jogo (0-24).", function(a)
+    local v = tonumber(a[1]) if v then Lighting.ClockTime=v Notify("Time", v, 2) end
+end)
+Register("fog", {}, "FogEnd (neblina).", function(a)
+    local v = tonumber(a[1]) or 1e6 Lighting.FogEnd=v Notify("Fog", v, 2)
+end)
+Register("esp", {"boxesp"}, "ESP jogadores.", function()
+    if Config.ESP.Enabled then Notify("ESP", "Já ativo. Use ;unesp", 2) return end
+    Config.ESP.Enabled = true espRefresh()
+    Notify("ESP", "ATIVADO", 2)
+end)
+Register("unesp", {}, "Desativa ESP.", function()
+    if not Config.ESP.Enabled then Notify("ESP", "Não está ativo", 2) return end
+    Config.ESP.Enabled = false espRefresh()
+    Notify("ESP", "DESATIVADO", 2)
+end)
+Register("espitems", {}, "ESP em itens/tools.", function()
+    Config.ESP.Items = not Config.ESP.Items espRefresh()
+    Notify("ESP Items", Config.ESP.Items and "ATIVADO" or "DESATIVADO", 2)
+end)
+Register("espconfig", {"espc"}, "Config ESP.", function(a)
+    local s = (a[1] or ""):lower()
+    if s=="health" then Config.ESP.ShowHealth = not Config.ESP.ShowHealth
+    elseif s=="name" then Config.ESP.ShowName = not Config.ESP.ShowName
+    elseif s=="dist" then Config.ESP.ShowDistance = not Config.ESP.ShowDistance
+    elseif s=="tracer" then Config.ESP.ShowTracer = not Config.ESP.ShowTracer
+    elseif s=="dist_max" then
+        local v = tonumber(a[2]) if v then Config.ESP.MaxDistance = v end
+    else Notify("ESP","Uso: espconfig health/name/dist/tracer/dist_max <n>",4) return end
+    SaveConfig() Notify("ESP","Atualizado",2)
+end)
+Register("freecam", {"fc"}, "Câmera livre.", function()
+    if State.freecam then Notify("Freecam", "Já ativo. Use ;unfreecam", 2) return end
+    State.freecam = true
+    State.freecamSaved = Camera.CFrame
+    Camera.CameraType = Enum.CameraType.Scriptable
+    State.freecamConn = RunService.RenderStepped:Connect(function(dt)
+        local look, right = Camera.CFrame.LookVector, Camera.CFrame.RightVector
+        local dir = Vector3.zero
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += look end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= look end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += right end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= right end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir -= Vector3.new(0,1,0) end
+        if dir.Magnitude > 0 then Camera.CFrame = Camera.CFrame + dir.Unit*70*dt end
+    end)
+    Notify("Freecam","ATIVADO",2)
+end)
+Register("unfreecam", {}, "Desativa freecam.", function()
+    if not State.freecam then Notify("Freecam", "Não está ativo", 2) return end
+    State.freecam = false
+    if State.freecamConn then State.freecamConn:Disconnect() State.freecamConn = nil end
+    Camera.CameraType = Enum.CameraType.Custom
+    if State.freecamSaved then Camera.CFrame = State.freecamSaved end
+    Notify("Freecam","DESATIVADO",2)
+end)
+Register("view", {}, "Espia a câmera de um player.", function(a)
+    if State.viewPlayer then Notify("View", "Já ativo. Use ;unview", 2) return end
+    local p = Utils.FindPlayer(a[1])
+    if not p or not p.Character then Notify("View","Player não achado",2) return end
+    State.viewPlayer = p
+    State.originalSubject = Camera.CameraSubject
+    local hum = p.Character:FindFirstChildOfClass("Humanoid")
+    if hum then
+        Camera.CameraSubject = hum
+        State.viewConn = RunService.Heartbeat:Connect(function()
+            if not State.viewPlayer then return end
+            local h = State.viewPlayer.Character and State.viewPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if h then Camera.CameraSubject = h end
+        end)
+    end
+    Notify("View", "Vendo: "..p.Name, 2)
+end)
+Register("unview", {}, "Para de espionar.", function()
+    if not State.viewPlayer then Notify("View","Não está ativo",2) return end
+    State.viewPlayer = nil
+    if State.viewConn then State.viewConn:Disconnect() State.viewConn = nil end
+    if State.originalSubject then Camera.CameraSubject = State.originalSubject
+    else
+        local _, h = Utils.GetChar()
+        if h then Camera.CameraSubject = h end
+    end
+    Notify("View","DESATIVADO",2)
+end)
+Register("maxzoom", {}, "Zoom máximo.", function(a)
+    local v = tonumber(a[1]) or 500
+    LocalPlayer.CameraMaxZoomDistance = v
+    Notify("Zoom", "MaxZoom = "..v, 2)
+end)
+Register("minzoom", {}, "Zoom mínimo.", function(a)
+    local v = tonumber(a[1]) or 0.5
+    LocalPlayer.CameraMinZoomDistance = v
+    Notify("Zoom", "MinZoom = "..v, 2)
+end)
+
+--=====================================================================
+-- 23. COMANDOS — JOGADOR
+--=====================================================================
+Register("rejoin", {"rj"}, "Reentra no servidor.", function()
+    TeleportService:Teleport(game.PlaceId, LocalPlayer)
+end)
+Register("serverhop", {"sh"}, "Troca de servidor.", function()
+    local ok, res = pcall(function()
+        return HttpService:JSONDecode(game:HttpGet(
+            ("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100"):format(game.PlaceId)))
+    end)
+    if not ok or not res or not res.data then Notify("SH","Falha",3) return end
+    local l = {}
+    for _, s in ipairs(res.data) do
+        if s.playing < s.maxPlayers and s.id ~= game.JobId then table.insert(l, s.id) end
+    end
+    if #l == 0 then Notify("SH","Sem servidores",2) return end
+    TeleportService:TeleportToPlaceInstance(game.PlaceId, l[math.random(1,#l)], LocalPlayer)
+end)
+Register("reset", {"rs"}, "Reseta personagem.", function()
+    local _, h = Utils.GetChar() if h then h.Health = 0 end
+end)
+Register("godmode", {"god"}, "Godmode simulado.", function()
+    local _, h = Utils.GetChar()
+    if not h then return end
+    if h.MaxHealth == math.huge then Notify("God", "Já ativo. Use ;ungod", 2) return end
+    h.MaxHealth=math.huge h.Health=math.huge
+    Notify("God","ATIVADO",2)
+end)
+Register("ungod", {}, "Remove godmode.", function()
+    local _, h = Utils.GetChar()
+    if not h then return end
+    if h.MaxHealth ~= math.huge then Notify("God", "Não está ativo", 2) return end
+    h.MaxHealth=100 h.Health=100
+    Notify("God","DESATIVADO",2)
+end)
+Register("heal", {"curar"}, "Cura o personagem.", function()
+    local _, h = Utils.GetChar() if h then h.Health=h.MaxHealth Notify("Heal","OK",2) end
+end)
+Register("loopheal", {"lheal"}, "Auto-cura.", function()
+    if State.loopheal then Notify("LoopHeal", "Já ativo. Use ;unloopheal", 2) return end
+    State.loopheal = true
+    State.loopHealConn = RunService.Heartbeat:Connect(function()
+        local _, h = Utils.GetChar()
+        if h and h.Health < h.MaxHealth then h.Health = h.MaxHealth end
+    end)
+    Notify("LoopHeal","ATIVADO",2)
+end)
+Register("unloopheal", {"unlheal"}, "Desativa auto-cura.", function()
+    if not State.loopheal then Notify("LoopHeal", "Não está ativo", 2) return end
+    State.loopheal = false
+    if State.loopHealConn then State.loopHealConn:Disconnect() State.loopHealConn = nil end
+    Notify("LoopHeal","DESATIVADO",2)
+end)
+Register("reassign", {}, "Devolve ferramentas.", function()
+    local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+    local c = LocalPlayer.Character
+    if not bp or not c then return end
+    for _, t in ipairs(c:GetChildren()) do
+        if t:IsA("Tool") then t.Parent = bp end
+    end
+    Notify("Reassign","OK",2)
+end)
+Register("goto", {"tp"}, "Teleporta até um player.", function(a)
+    local p = Utils.FindPlayer(a[1])
+    if not p or not p.Character then Notify("TP","Player não achado",2) return end
+    local hrp = Utils.GetHRP()
+    local t = p.Character:FindFirstChild("HumanoidRootPart")
+    if hrp and t then hrp.CFrame = t.CFrame * CFrame.new(0,0,3) Notify("TP","→ "..p.Name,2) end
+end)
+Register("bring", {"trazer"}, "Traz um player até você.", function(a)
+    local p = Utils.FindPlayer(a[1])
+    if not p or not p.Character then Notify("Bring","Player não achado",2) return end
+    local hrp = Utils.GetHRP()
+    local t = p.Character:FindFirstChild("HumanoidRootPart")
+    if hrp and t then t.CFrame = hrp.CFrame * CFrame.new(0,0,3) Notify("Bring",p.Name,2) end
+end)
+Register("ping", {}, "Mostra seu ping.", function()
+    local p = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+    Notify("Ping", math.floor(p).." ms", 3)
+end)
+Register("age", {}, "Idade da conta.", function(a)
+    local t = a[1] and Utils.FindPlayer(a[1]) or LocalPlayer
+    if not t then Notify("Age","Não achado",2) return end
+    local ok, age = pcall(function() return t.AccountAge end)
+    if ok and age then Notify(t.Name, age.." dias (~"..math.floor(age/365).." anos)",4) end
+end)
+Register("invisible", {"invis"}, "Fica invisível (local).", function()
+    local c = LocalPlayer.Character if not c then return end
+    if State.invisible then Notify("Invis", "Já ativo. Use ;uninvis", 2) return end
+    State.invisible = true
+    for _, p in ipairs(c:GetDescendants()) do
+        if p:IsA("BasePart") then p.LocalTransparencyModifier = 1 end
+    end
+    Notify("Invis","ATIVADO",2)
+end)
+Register("uninvisible", {"uninvis"}, "Remove invisibilidade.", function()
+    local c = LocalPlayer.Character if not c then return end
+    if not State.invisible then Notify("Invis", "Não está ativo", 2) return end
+    State.invisible = false
+    for _, p in ipairs(c:GetDescendants()) do
+        if p:IsA("BasePart") then p.LocalTransparencyModifier = 0 end
+    end
+    Notify("Invis","DESATIVADO",2)
+end)
+Register("freeze", {"congelar"}, "Congela um player.", function(a)
+    local p = Utils.FindPlayer(a[1])
+    if not p or not p.Character then Notify("Freeze","Inválido",2) return end
+    local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+    if hrp then hrp.Anchored = true Notify("Freeze", p.Name, 2) end
+end)
+Register("unfreeze", {"descongelar"}, "Descongela um player.", function(a)
+    local p = Utils.FindPlayer(a[1])
+    if not p or not p.Character then return end
+    local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+    if hrp then hrp.Anchored = false Notify("Unfreeze", p.Name, 2) end
+end)
+Register("freezeall", {}, "Congela todos os jogadores.", function()
+    if State.frozenAll then Notify("FreezeAll", "Já ativo. Use ;unfreezeall", 2) return end
+    State.frozenAll = true
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.Anchored = true end
+        end
+    end
+    Notify("FreezeAll", "ATIVADO", 2)
+end)
+Register("unfreezeall", {}, "Descongela todos.", function()
+    if not State.frozenAll then Notify("FreezeAll", "Não está ativo", 2) return end
+    State.frozenAll = false
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.Anchored = false end
+        end
+    end
+    Notify("FreezeAll", "DESATIVADO", 2)
+end)
+Register("speedall", {}, "Speed em todos (client).", function(a)
+    local v = tonumber(a[1]) or 16
+    for _, p in ipairs(Players:GetPlayers()) do
+        local c = p.Character
+        local h = c and c:FindFirstChildOfClass("Humanoid")
+        if h then h.WalkSpeed = v end
+    end
+    Notify("Speed","Todos = "..v,2)
+end)
+Register("jumpall", {}, "Faz todos pularem (client).", function()
+    for _, p in ipairs(Players:GetPlayers()) do
+        local c = p.Character
+        local h = c and c:FindFirstChildOfClass("Humanoid")
+        if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+    Notify("JumpAll", "OK", 2)
+end)
+Register("sitall", {}, "Faz todos sentarem (client).", function()
+    for _, p in ipairs(Players:GetPlayers()) do
+        local c = p.Character
+        local h = c and c:FindFirstChildOfClass("Humanoid")
+        if h then h.Sit = true end
+    end
+    Notify("SitAll", "OK", 2)
+end)
+Register("invisibleall", {}, "Deixa todos invisíveis (client).", function()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            for _, part in ipairs(p.Character:GetDescendants()) do
+                if part:IsA("BasePart") then part.LocalTransparencyModifier = 1 end
+            end
+        end
+    end
+    Notify("InvisAll", "OK", 2)
+end)
+
+--=====================================================================
+-- 24. COMANDOS — AÇÕES
+--=====================================================================
+Register("fakename", {}, "Muda seu nome local.", function(a)
+    local name = table.concat(a, " ")
+    if name == "" then Notify("FakeName", "Uso: fakename <nome>", 3) return end
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        State.fakeNameOriginal = hum.DisplayName
+        hum.DisplayName = name
+    end
+    Notify("FakeName", "→ "..name, 2)
+end)
+Register("unfakename", {}, "Restaura seu nome.", function()
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.DisplayName = State.fakeNameOriginal or LocalPlayer.DisplayName
+    end
+    Notify("FakeName", "Restaurado", 2)
+end)
+Register("naked", {}, "Remove todos os acessórios.", function()
+    local c = LocalPlayer.Character if not c then return end
+    State.nakedOriginal = {}
+    for _, obj in ipairs(c:GetChildren()) do
+        if obj:IsA("Accessory") or obj:IsA("Hat") or
+           (obj:IsA("Shirt") or obj:IsA("Pants") or
+            obj:IsA("ShirtGraphic")) then
+            table.insert(State.nakedOriginal, obj)
+            obj.Parent = nil
+        end
+    end
+    Notify("Naked", "Acessórios removidos", 2)
+end)
+Register("unnaked", {}, "Restaura acessórios.", function()
+    local c = LocalPlayer.Character if not c then return end
+    for _, obj in ipairs(State.nakedOriginal) do
+        pcall(function() obj.Parent = c end)
+    end
+    State.nakedOriginal = {}
+    Notify("Naked", "Restaurado", 2)
+end)
+Register("headsize", {}, "Muda o tamanho da cabeça.", function(a)
+    local v = tonumber(a[1]) or 1
+    local c = LocalPlayer.Character
+    local head = c and c:FindFirstChild("Head")
+    if head and head:FindFirstChild("Mesh") then
+        head.Size = Vector3.new(v, v, v)
+        head.Mesh.Scale = Vector3.new(v, v, v) / 2
+        head.Mesh.Offset = Vector3.new(0, 0.5 - v / 2, 0)
+    end
+    Notify("HeadSize", "Size = "..v, 2)
+end)
+Register("punch", {}, "Animação de soco.", function()
+    local _, h = Utils.GetChar()
+    if not h then return end
+    local anim = Instance.new("Animation")
+    anim.AnimationId = "rbxassetid://2788340988"
+    local ok, t = pcall(function() return h.Animator:LoadAnimation(anim) end)
+    if ok and t then t:Play() end
+end)
+
+--=====================================================================
+-- 25. COMANDOS — EFEITOS
+--=====================================================================
+Register("burn", {}, "Coloca fogo em um player.", function(a)
+    local p = a[1] and Utils.FindPlayer(a[1]) or LocalPlayer
+    if not p or not p.Character then Notify("Burn", "Inválido", 2) return end
+    local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        local fire = Instance.new("Fire")
+        fire.Size = 10
+        fire.Heat = 10
+        fire.Parent = hrp
+        task.delay(5, function() pcall(function() fire:Destroy() end) end)
+    end
+    Notify("Burn", p.Name, 2)
+end)
+Register("sparkles", {}, "Efeito sparkles.", function(a)
+    local p = a[1] and Utils.FindPlayer(a[1]) or LocalPlayer
+    if not p or not p.Character then Notify("Sparkles", "Inválido", 2) return end
+    local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        local s = Instance.new("Sparkles")
+        s.SparkleColor = Color3.fromRGB(255, 220, 100)
+        s.Parent = hrp
+        task.delay(5, function() pcall(function() s:Destroy() end) end)
+    end
+    Notify("Sparkles", p.Name, 2)
+end)
+Register("smoke", {}, "Efeito de fumaça.", function(a)
+    local p = a[1] and Utils.FindPlayer(a[1]) or LocalPlayer
+    if not p or not p.Character then Notify("Smoke", "Inválido", 2) return end
+    local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        local s = Instance.new("Smoke")
+        s.Size = 5
+        s.RiseVelocity = 3
+        s.Parent = hrp
+        task.delay(5, function() pcall(function() s:Destroy() end) end)
+    end
+    Notify("Smoke", p.Name, 2)
+end)
+
+--=====================================================================
+-- 26. COMANDOS — TROLL
+--=====================================================================
+Register("fling", {}, "Fling em quem estiver perto (3s).", function()
+    local hrp = Utils.GetHRP() if not hrp then return end
+    local v = Instance.new("BodyAngularVelocity", hrp)
+    v.AngularVelocity=Vector3.new(0,1e4,0)
+    v.MaxTorque=Vector3.new(1e5,1e5,1e5) v.P=1250
+    Notify("Fling","3s",2)
+    task.delay(3, function() pcall(function() v:Destroy() end) end)
+end)
+Register("spin", {"girar"}, "Gira rápido (3s).", function()
+    local c, h = Utils.GetChar() if not h then return end
+    local hrp = c:FindFirstChild("HumanoidRootPart") if not hrp then return end
+    local bg = Instance.new("BodyGyro", hrp)
+    bg.MaxTorque=Vector3.new(1e5,1e5,1e5) bg.P=1e4
+    bg.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(45), 0)
+    Notify("Spin","3s",2)
+    task.delay(3, function() pcall(function() bg:Destroy() end) end)
+end)
+Register("loopspin", {"lspin"}, "Gira continuamente.", function()
+    if State.spinLoop then Notify("LoopSpin", "Já ativo. Use ;unloopspin", 2) return end
+    State.spinLoop = true
+    State.spinLoopConn = RunService.Heartbeat:Connect(function(dt)
+        local c = LocalPlayer.Character
+        local hrp = c and c:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(360 * dt), 0)
+        end
+    end)
+    Notify("LoopSpin", "ATIVADO", 2)
+end)
+Register("unloopspin", {"unlspin"}, "Desativa giro contínuo.", function()
+    if not State.spinLoop then Notify("LoopSpin", "Não está ativo", 2) return end
+    State.spinLoop = false
+    if State.spinLoopConn then State.spinLoopConn:Disconnect() State.spinLoopConn = nil end
+    Notify("LoopSpin", "DESATIVADO", 2)
+end)
+Register("sit", {"sentar"}, "Faz o personagem sentar.", function()
+    local _, h = Utils.GetChar() if h then h.Sit = true end
+end)
+Register("dance", {"dançar"}, "Animação de dança.", function()
+    local _, h = Utils.GetChar() if not h then return end
+    local anim = Instance.new("Animation")
+    anim.AnimationId = "rbxassetid://507771019"
+    local ok, t = pcall(function() return h.Animator:LoadAnimation(anim) end)
+    if ok and t then t:Play() end
+end)
+Register("clone", {"clonar"}, "Cria clone estático.", function()
+    local c = LocalPlayer.Character if not c then return end
+    local cl = c:Clone()
+    cl.Parent = Workspace
+    for _, p in ipairs(cl:GetDescendants()) do
+        if p:IsA("Script") or p:IsA("LocalScript") then p:Destroy() end
+    end
+    local h = cl:FindFirstChildOfClass("Humanoid")
+    if h then h.WalkSpeed=0 h.DisplayName="Imperium Clone" end
+    Notify("Clone","OK",2)
+end)
+Register("clear", {"limpar"}, "Remove clones locais.", function()
+    for _, o in ipairs(Workspace:GetDescendants()) do
+        if o:IsA("Model") and o.Name:find(LocalPlayer.Name) then
+            pcall(function() o:Destroy() end)
+        end
+    end
+    Notify("Clear","OK",2)
+end)
+
+--=====================================================================
+-- 27. COMANDOS — ANTI/AUTO
+--=====================================================================
+Register("antiafk", {"aafk"}, "Anti-AFK.", function()
+    if State.antiafk then Notify("AntiAFK", "Já ativo. Use ;unaafk", 2) return end
+    State.antiafk = true
+    State.antiAfkConn = LocalPlayer.Idled:Connect(function()
+        pcall(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end)
+    end)
+    Notify("AntiAFK", "ATIVADO", 2)
+end)
+Register("unantiafk", {"unaafk"}, "Desativa anti-AFK.", function()
+    if not State.antiafk then Notify("AntiAFK", "Não está ativo", 2) return end
+    State.antiafk = false
+    if State.antiAfkConn then State.antiAfkConn:Disconnect() State.antiAfkConn = nil end
+    Notify("AntiAFK", "DESATIVADO", 2)
+end)
+
+--=====================================================================
+-- 28. COMANDOS — CHAT PV + HUD
+--=====================================================================
+Register("chatpv", {"cpv"}, "Abre o chat privado local (sincroniza).", function(a)
+    local sub = (a[1] or ""):lower()
+    if sub == "close" or sub == "fechar" then
+        ChatPV.open = false
+        ChatPV.frame.Visible = false
+        return
+    end
+    if sub == "clear" or sub == "limpar" then
+        for _, m in ipairs(ChatPV.scroll:GetChildren()) do
+            if m:IsA("Frame") then m:Destroy() end
+        end
+        ChatPV.messages = {}
+        ChatPV.scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+        Notify("ChatPV", "Limpo", 2)
+        return
+    end
+    ChatPV.open = not ChatPV.open
+    ChatPV.frame.Visible = ChatPV.open
+    if ChatPV.open then
+        task.defer(function()
+            task.wait(0.15)
+            pcall(function() ChatPV.input:CaptureFocus() end)
+        end)
+    end
+    Notify("ChatPV", ChatPV.open and "Aberto" or "Fechado", 2)
+end)
+Register("hidegui", {}, "Esconde a bolinha e o painel.", function()
+    Ball.Visible = false
+    Panel.Visible = false
+    Notify("HUD", "Escondido. Use ;showgui", 2)
+end)
+Register("showgui", {}, "Mostra a bolinha e o painel.", function()
+    Ball.Visible = true
+    if Config.PanelOpen then Panel.Visible = true end
+    Notify("HUD", "Visível", 2)
+end)
+
+--=====================================================================
+-- 29. COMANDOS — WAYPOINTS
+--=====================================================================
+Register("waypoint", {"wp"}, "Waypoints: save/list/go/del <nome>.", function(a)
+    local s = (a[1] or ""):lower()
+    if s == "save" then
+        local n, hrp = a[2], Utils.GetHRP()
+        if not n or not hrp then Notify("WP","Uso: wp save <nome>",3) return end
+        WPs[n] = {x=hrp.Position.X, y=hrp.Position.Y, z=hrp.Position.Z, place=game.PlaceId}
+        SaveWPs() Notify("WP","Salvo: "..n,2)
+    elseif s == "list" then
+        local l = {} for k in pairs(WPs) do table.insert(l, k) end
+        if #l == 0 then Notify("WP","Vazio",2) return end
+        Notify("WPs", table.concat(l, ", "), 5)
+    elseif s == "go" then
+        local wp = a[2] and WPs[a[2]]
+        if not wp then Notify("WP","Não existe",2) return end
+        local hrp = Utils.GetHRP()
+        if hrp then hrp.CFrame = CFrame.new(Vector3.new(wp.x, wp.y, wp.z)) Notify("WP","→ "..a[2],2) end
+    elseif s == "del" then
+        if a[2] and WPs[a[2]] then WPs[a[2]]=nil SaveWPs() Notify("WP","Removido",2) end
+    else
+        Notify("WP","Uso: wp save/list/go/del",4)
+    end
+end)
+
+--=====================================================================
+-- 30. COMANDOS — ALIASES
+--=====================================================================
+Register("alias", {}, "Aliases: add/del/list.", function(a)
+    local s = (a[1] or ""):lower()
+    if s == "add" then
+        local al, cm = a[2], a[3]
+        if not al or not cm then Notify("Alias","Uso: alias add <a> <cmd>",3) return end
+        cm = cm:lower()
+        if not Registry[cm] then Notify("Alias","Cmd não existe",3) return end
+        Aliases[al:lower()] = cm Notify("Alias", al.." → "..cm, 2)
+    elseif s == "del" then
+        if a[2] then Aliases[a[2]:lower()] = nil Notify("Alias","Removido",2) end
+    elseif s == "list" then
+        local l = {} for k, v in pairs(Aliases) do table.insert(l, k.."→"..v) end
+        Notify("Aliases", table.concat(l, ", "), 5)
+    else Notify("Alias","Uso: alias add/del/list",4) end
+end)
+
+--=====================================================================
+-- 31. COMANDOS — LOGS
+--=====================================================================
+Register("chatlog", {"clog"}, "Ver/limpar chatlog.", function(a)
+    if (a[1] or ""):lower() == "clear" then Logs.chat = {} Notify("Chatlog","Limpo",2) return end
+    if #Logs.chat == 0 then Notify("Chatlog","Vazio",2) return end
+    local last = Logs.chat[#Logs.chat]
+    Notify("Chatlog", #Logs.chat.." msgs. Última: "..last, 5)
+end)
+Register("joinlog", {"jlog"}, "Ver/limpar joinlog.", function(a)
+    if (a[1] or ""):lower() == "clear" then Logs.join = {} Notify("Joinlog","Limpo",2) return end
+    if #Logs.join == 0 then Notify("Joinlog","Vazio",2) return end
+    local last = Logs.join[#Logs.join]
+    Notify("Joinlog", #Logs.join.." eventos. Último: "..last, 5)
+end)
+Register("savelogs", {}, "Salva logs em arquivos.", function()
+    if not hasFS then Notify("Save","Sem FS",3) return end
+    pcall(function()
+        if not isfolder("Imperium") then makefolder("Imperium") end
+        writefile("Imperium/chatlog.txt", table.concat(Logs.chat, "\n"))
+        writefile("Imperium/joinlog.txt", table.concat(Logs.join, "\n"))
+        Notify("Save","OK em Imperium/",3)
+    end)
+end)
+
+--=====================================================================
+-- 32. COMANDOS — SISTEMA
+--=====================================================================
+Register("discord", {"dc"}, "Copia o link do Discord.", function()
+    local link = Config.DiscordLink
+    if setclipboard then pcall(function() setclipboard(link) end)
+    elseif toclipboard then pcall(function() toclipboard(link) end) end
+    Notify("Discord", link, 5)
+end)
+Register("help", {"h","?"}, "Lista todos os comandos.", function()
+    Notify("Help", #CmdList.." comandos. Use a barra ou ;cmd", 4)
+end)
+Register("prefix", {}, "Muda o prefixo do chat.", function(a)
+    if a[1] and #a[1] >= 1 then Config.Prefix = a[1] SaveConfig() Notify("Prefix", a[1], 2) end
+end)
+Register("notify", {}, "Notificação de teste.", function(a)
+    Notify("Teste", #a > 0 and table.concat(a, " ") or "Hello!", 4)
+end)
+Register("version", {"v"}, "Versão do Imperium.", function()
+    Notify("Imperium","v5.1 | Open Source",3)
+end)
+Register("credits", {}, "Créditos.", function()
+    Notify("Credits","Imperium Dev | inspirado em Infinite Yield",5)
+end)
+
+--=====================================================================
+-- 33. LISTA
+--=====================================================================
+table.sort(CmdList, function(a,b) return a.name:lower() < b.name:lower() end)
+
+local function BuildList()
+    for _, c in ipairs(ListFrame:GetChildren()) do
+        if c:IsA("TextButton") then c:Destroy() end
+    end
+    for i, cmd in ipairs(CmdList) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, -4, 0, 24)
+        btn.BackgroundColor3 = Palette.ListItemBg
+        btn.BackgroundTransparency = 0.55
+        btn.BorderSizePixel = 0
+        btn.Text = "  " .. cmd.name
+        btn.TextColor3 = Palette.Text
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.Font = Enum.Font.SourceSans
+        btn.TextSize = 14
+        btn.AutoButtonColor = false
+        btn.LayoutOrder = i
+        btn.Parent = ListFrame
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+
+        if IsOnMobile then
+            local holding, holdTask, showed = false, nil, false
+            btn.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.Touch then
+                    holding = true showed = false
+                    holdTask = task.delay(0.5, function()
+                        if holding then ShowTooltip(cmd, btn) showed = true end
+                    end)
+                end
+            end)
+            btn.InputEnded:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.Touch then
+                    holding = false
+                    if holdTask then task.cancel(holdTask) holdTask = nil end
+                    if showed then HideTooltip() end
+                    showed = false
+                end
+            end)
+        else
+            btn.MouseEnter:Connect(function()
+                btn.BackgroundTransparency = 0.3
+                ShowTooltip(cmd, btn)
+            end)
+            btn.MouseLeave:Connect(function()
+                btn.BackgroundTransparency = 0.55
+                HideTooltip()
+            end)
+        end
+    end
+    ListFrame.CanvasSize = UDim2.new(0, 0, 0, ListLayout.AbsoluteContentSize.Y + 8)
+end
+
+ListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    ListFrame.CanvasSize = UDim2.new(0, 0, 0, ListLayout.AbsoluteContentSize.Y + 8)
+end)
+BuildList()
+
+--=====================================================================
+-- 34. DRAG
+--=====================================================================
+local dragging, dragStartX, dragStartPosX = false, 0, nil
+
+TopBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStartX = input.Position.X
+        dragStartPosX = Panel.Position.X
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if not dragging then return end
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch then
+        local deltaX = input.Position.X - dragStartX
+        local currentY = Panel.Position.Y
+        Panel.Position = UDim2.new(0, dragStartPosX.Offset + deltaX, currentY.Scale, currentY.Offset)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if not dragging then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+        Config.PanelX = {Panel.Position.X.Scale, Panel.Position.X.Offset}
+        Config.PanelY = {Panel.Position.Y.Scale, Panel.Position.Y.Offset}
+        SaveConfig()
+    end
+end)
+
+--=====================================================================
+-- 35. TOGGLE
+--=====================================================================
+local ballDragging, ballStart, ballPos, ballMoved = false, nil, nil, false
+local PANEL_SLIDE_OFFSET = 400
+
+local function TogglePanel()
+    Config.PanelOpen = not Config.PanelOpen
+    local target
+    if Config.PanelOpen then
+        target = UDim2.new(Config.PanelX[1], Config.PanelX[2], Config.PanelY[1], Config.PanelY[2])
+    else
+        target = UDim2.new(Config.PanelX[1], Config.PanelX[2] + PANEL_SLIDE_OFFSET, Config.PanelY[1], Config.PanelY[2])
+    end
+    TweenService:Create(Panel, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Position = target
+    }):Play()
+    SaveConfig()
+end
+
+Ball.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        ballDragging = true ballMoved = false
+        ballStart = input.Position ballPos = Ball.Position
+    end
+end)
+Ball.InputChanged:Connect(function(input)
+    if not ballDragging then return end
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch then
+        local d = input.Position - ballStart
+        if d.Magnitude > 6 then ballMoved = true end
+        Ball.Position = UDim2.new(
+            ballPos.X.Scale, ballPos.X.Offset + d.X,
+            ballPos.Y.Scale, ballPos.Y.Offset + d.Y
+        )
+    end
+end)
+Ball.InputEnded:Connect(function(input)
+    if not ballDragging then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        ballDragging = false
+        if not ballMoved then TogglePanel()
+        else
+            Config.BallX = {Ball.Position.X.Scale, Ball.Position.X.Offset}
+            Config.BallY = {Ball.Position.Y.Scale, Ball.Position.Y.Offset}
+            SaveConfig()
+        end
+    end
+end)
+
+--=====================================================================
+-- 36. INPUT CMD BAR + CHAT
+--=====================================================================
+Cmdbar.FocusLost:Connect(function(enter)
+    if not enter then return end
+    local text = Cmdbar.Text
+    Cmdbar.Text = ""
+    if text == "" then return end
+    if text:sub(1, #Config.Prefix) == Config.Prefix then
+        text = text:sub(#Config.Prefix + 1)
+    end
+    local parts = {}
+    for w in text:gmatch("%S+") do table.insert(parts, w) end
+    if #parts == 0 then return end
+    local name = table.remove(parts, 1)
+    Execute(name, parts)
+end)
+
+local function ProcessChat(text)
+    if #text < 2 then return end
+    if text:sub(1, #Config.Prefix) ~= Config.Prefix then return end
+    local body = text:sub(#Config.Prefix + 1)
+    local parts = {}
+    for w in body:gmatch("%S+") do table.insert(parts, w) end
+    if #parts == 0 then return end
+    local name = table.remove(parts, 1)
+    Execute(name, parts)
+end
+
+pcall(function()
+    if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+        TextChatService.MessageReceived:Connect(function(msg)
+            if msg.TextSource and msg.TextSource.UserId == LocalPlayer.UserId then
+                ProcessChat(msg.Text)
+            end
+        end)
+    end
+end)
+LocalPlayer.Chatted:Connect(ProcessChat)
+
+--=====================================================================
+-- 37. KEYBIND PC
+--=====================================================================
+if not IsOnMobile then
+    UserInputService.InputBegan:Connect(function(input, processed)
+        if processed then return end
+        if Cmdbar:IsFocused() then return end
+        if input.KeyCode == Enum.KeyCode.RightShift then
+            TogglePanel()
+            if Config.PanelOpen then Cmdbar:CaptureFocus() end
+        end
+        if input.KeyCode == Enum.KeyCode.End then
+            ScreenGui:Destroy()
+            _G.ImperiumLoaded = false
+        end
+    end)
+end
+
+--=====================================================================
+-- 38. BOOT
+--=====================================================================
+if not Config.PanelOpen then
+    Panel.Position = UDim2.new(Config.PanelX[1], Config.PanelX[2] + PANEL_SLIDE_OFFSET, Config.PanelY[1], Config.PanelY[2])
+end
+
+Notify("Imperium", "v5.1 — "..#CmdList.." comandos", 4)
+Notify("Como usar", IsOnMobile and "Toque na bolinha IM (canto superior esquerdo)"
+    or "RightShift ou clique na bolinha IM", 5)
+
+_G.Imperium = {
+    Config=Config, Registry=Registry, Aliases=Aliases,
+    Register=Register, Execute=Execute, Notify=Notify,
+    Logs=Logs, Waypoints=WPs, ESP=ESP, Fly=fly, HeadSit=HeadSit,
+    GUI=ScreenGui, Panel=Panel, Ball=Ball, TopBar=TopBar, ChatPV=ChatPV,
+    TogglePanel=TogglePanel,
+    Version="5.1", IsOnMobile=IsOnMobile,
+}
